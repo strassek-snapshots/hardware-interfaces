@@ -27,11 +27,17 @@ namespace bluetooth {
 namespace hci {
 
 size_t H4Protocol::Send(uint8_t type, const uint8_t* data, size_t length) {
-  int rv = WriteSafely(uart_fd_, &type, sizeof(type));
-  if (rv == sizeof(type)) {
-    rv = WriteSafely(uart_fd_, data, length);
-  }
-  return rv;
+ uint8_t* comb_data;
+ comb_data = (uint8_t*) malloc((sizeof(uint8_t)*length) + 1);
+ memset(comb_data,0,((sizeof(uint8_t)*length) + 1));
+ *comb_data = type;
+ memcpy(comb_data+1 , data, (sizeof(uint8_t)*length));
+ ++length;
+ size_t rv = WriteSafely(uart_fd_, comb_data, length);
+ if(rv >0)
+   rv--;
+ free(comb_data);
+ return rv;
 }
 
 void H4Protocol::OnPacketReady() {
@@ -54,15 +60,19 @@ void H4Protocol::OnPacketReady() {
   hci_packet_type_ = HCI_PACKET_TYPE_UNKNOWN;
 }
 
+#define MAX_EVENT_SIZE 1024*9
 void H4Protocol::OnDataReady(int fd) {
+  uint8_t event_buff[MAX_EVENT_SIZE] = {0};
+  int byte_offset = 0 ;
+  int event_buff_length = TEMP_FAILURE_RETRY(read(fd, event_buff, MAX_EVENT_SIZE));
+  CHECK(event_buff_length > 0);
+
   if (hci_packet_type_ == HCI_PACKET_TYPE_UNKNOWN) {
-    uint8_t buffer[1] = {0};
-    size_t bytes_read = TEMP_FAILURE_RETRY(read(fd, buffer, 1));
-    CHECK(bytes_read == 1);
-    hci_packet_type_ = static_cast<HciPacketType>(buffer[0]);
-  } else {
-    hci_packetizer_.OnDataReady(fd, hci_packet_type_);
+    hci_packet_type_ = static_cast<HciPacketType>(event_buff[byte_offset]);
+    byte_offset++;
+    event_buff_length--;
   }
+  hci_packetizer_.OnDataReady(&event_buff[byte_offset], event_buff_length, hci_packet_type_);
 }
 
 }  // namespace hci

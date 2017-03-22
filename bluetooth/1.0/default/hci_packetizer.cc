@@ -85,6 +85,47 @@ void HciPacketizer::OnDataReady(int fd, HciPacketType packet_type) {
   }
 }
 
+void HciPacketizer::OnDataReady(const uint8_t* data, size_t bytes_read, HciPacketType packet_type) {
+  int data_index = 0 ;
+  while(bytes_read > 0)
+  {
+    switch (state_) {
+      case HCI_PREAMBLE: {
+        CHECK(bytes_read > 0);
+        preamble_[bytes_read_] = data[data_index];
+        ++bytes_read_;
+        --bytes_read;
+        ++data_index;
+        if (bytes_read_ == preamble_size_for_type[packet_type]) {
+          size_t packet_length =
+             HciGetPacketLengthForType(packet_type, preamble_);
+          packet_.resize(preamble_size_for_type[packet_type] + packet_length);
+          memcpy(packet_.data(), preamble_, preamble_size_for_type[packet_type]);
+          bytes_remaining_ = packet_length;
+          state_ = HCI_PAYLOAD;
+          bytes_read_ = 0;
+         }
+         break;
+       }
+
+       case HCI_PAYLOAD: {
+         CHECK(bytes_read > 0);
+         int data_length = bytes_read >= bytes_remaining_ ? bytes_remaining_ : bytes_read;
+         memcpy(packet_.data() + preamble_size_for_type[packet_type] + bytes_read_, &data[data_index], data_length);
+         bytes_remaining_ -= data_length;
+         bytes_read_ += data_length;
+         if (bytes_remaining_ == 0) {
+           packet_ready_cb_();
+           state_ = HCI_PREAMBLE;
+           bytes_read_ = 0;
+           bytes_read = 0;
+         }
+         break;
+       }
+     }
+   }
+}
+
 }  // namespace hci
 }  // namespace bluetooth
 }  // namespace hardware

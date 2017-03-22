@@ -35,6 +35,7 @@ class HciPacketizer {
   HciPacketizer(HciPacketReadyCallback packet_cb)
       : packet_ready_cb_(packet_cb){};
   void OnDataReady(int fd, HciPacketType packet_type);
+  void OnDataReady(const uint8_t* data, size_t length, HciPacketType packet_type);
   const hidl_vec<uint8_t>& GetPacket() const;
 
  protected:
